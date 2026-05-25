@@ -513,6 +513,8 @@ class DV_IGDF(object):
             
         src_q1, src_q2 = self.src_Q(src_state, src_action)
         src_q = torch.min(src_q1, src_q2)
+        src_v = self.src_V(src_state)
+        src_adv = src_q - src_v
         
         eps = 1e-8
         min_val = torch.min(src_adv, dim=0, keepdim=True).values
