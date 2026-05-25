@@ -205,6 +205,8 @@ if __name__ == "__main__":
     eval_tar_return = eval_policy(policy, tar_env, eval_cnt=eval_cnt)
     eval_cnt += 1
 
+    policy.update_info(src_replay_buffer, tar_replay_buffer, config['batch_size'], writer=None)
+
     for t in range(int(config['max_step'])):
         policy.train(src_replay_buffer, tar_replay_buffer, config['batch_size'], writer=None)
 
