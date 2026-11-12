@@ -154,21 +154,10 @@ class SQL(object):
         self.v_func = ValueFunc(config['state_dim'], config['action_dim'], hidden_size=config['hidden_sizes']).to(self.device)
 
         # aka actor
-        self.policy = Policy(config['state_dim'], config['action_dim'], config['max_action'], hidden_size=config['hidden_sizes']).to(self.device)
 
         self.q_optimizer = torch.optim.Adam(self.q_funcs.parameters(), lr=config['critic_lr'])
         self.v_optimizer = torch.optim.Adam(self.v_func.parameters(), lr=config['critic_lr'])
-        self.policy_optimizer = torch.optim.Adam(self.policy.parameters(), lr=config['actor_lr'])
 
-        self.policy_lr_schedule = CosineAnnealingLR(self.policy_optimizer, config['max_step'])
-    
-    def select_action(self, state, test=True):
-        with torch.no_grad():
-            action, _, mean = self.policy(torch.Tensor(state).view(1,-1).to(self.device))
-        if test:
-            return mean.squeeze().cpu().numpy()
-        else:
-            return action.squeeze().cpu().numpy()
 
     def update_target(self):
         """moving average update of target networks"""
@@ -200,67 +189,48 @@ class SQL(object):
         loss = F.mse_loss(q_1, value_target) + F.mse_loss(q_2, value_target)
         return loss
 
-    def update_policy(self, advantage_batch, state_batch, action_batch):
-        weight = advantage_batch.detach().clamp(min=0.0, max=100.0)
-        bc_loss = self.policy.bc_loss(state_batch, action_batch)
-        policy_loss = torch.mean(weight * bc_loss)
-        return policy_loss
 
     def train(self, src_replay_buffer, batch_size=128, writer=None):
-
         self.total_it += 1
 
-        src_state, src_action, src_next_state, src_reward, src_not_done = src_replay_buffer.sample(batch_size)
+        state, action, next_state, reward, not_done = (
+            src_replay_buffer.sample(batch_size)
+        )
 
-        state = src_state
-        action = src_action
-        next_state = src_next_state
-        reward = src_reward
-        not_done = src_not_done
-
-        v_loss_step, adv = self.update_v_function(state, action, writer)
+        # Update V
+        v_loss, _ = self.update_v_function(state, action, writer)
         self.v_optimizer.zero_grad()
-        v_loss_step.backward()
+        v_loss.backward()
         self.v_optimizer.step()
 
-        q_loss_step = self.update_q_functions(state, action, reward, next_state, not_done, writer)
-
+        # Update Q
+        q_loss = self.update_q_functions(
+            state, action, reward, next_state, not_done, writer
+        )
         self.q_optimizer.zero_grad()
-        q_loss_step.backward()
+        q_loss.backward()
         self.q_optimizer.step()
 
+        # Update target Q
         self.update_target()
 
-        # update policy and temperature parameter
-        for p in self.q_funcs.parameters():
-            p.requires_grad = False
-        pi_loss_step = self.update_policy(adv, state, action)
-        self.policy_optimizer.zero_grad()
-        pi_loss_step.backward()
-        self.policy_optimizer.step()
-        self.policy_lr_schedule.step()
-
-        for p in self.q_funcs.parameters():
-            p.requires_grad = True
-
-    @property
-    def alpha(self):
-        return self.log_alpha.exp()
 
     def save(self, filename):
         torch.save(self.q_funcs.state_dict(), filename + "_critic")
         torch.save(self.q_optimizer.state_dict(), filename + "_critic_optimizer")
         torch.save(self.v_func.state_dict(), filename + "_value")
         torch.save(self.v_optimizer.state_dict(), filename + "_value_optimizer")
-        torch.save(self.policy.state_dict(), filename + "_actor")
-        torch.save(self.policy_optimizer.state_dict(), filename + "_actor_optimizer")
-        torch.save(self.policy_lr_schedule.state_dict(), filename + "_actor_lr_scheduler")
 
     def load(self, filename):
-        self.q_funcs.load_state_dict(torch.load(filename + "_critic"))
-        self.q_optimizer.load_state_dict(torch.load(filename + "_critic_optimizer"))
-        self.v_func.load_state_dict(torch.load(filename + "_value"))
-        self.v_optimizer.load_state_dict(torch.load(filename + "_value_optimizer"))
-        self.policy.load_state_dict(torch.load(filename + "_actor"))
-        self.policy_optimizer.load_state_dict(torch.load(filename + "_actor_optimizer"))
-        self.policy_lr_schedule.load_state_dict(torch.load(filename + "_actor_lr_scheduler"))
+        self.q_funcs.load_state_dict(
+            torch.load(filename + "_critic", map_location=self.device)
+        )
+        self.q_optimizer.load_state_dict(
+            torch.load(filename + "_critic_optimizer", map_location=self.device)
+        )
+        self.v_func.load_state_dict(
+            torch.load(filename + "_value", map_location=self.device)
+        )
+        self.v_optimizer.load_state_dict(
+            torch.load(filename + "_value_optimizer", map_location=self.device)
+        )

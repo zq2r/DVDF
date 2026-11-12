@@ -193,6 +193,7 @@ if __name__ == "__main__":
 
     algo = algo_map[args.policy.lower()]
     policy = algo(config, device)
+
     
     ## write logs to record training parameters
     with open(outdir + '/log.txt','w') as f:
@@ -205,8 +206,7 @@ if __name__ == "__main__":
     src_replay_buffer.convert_D4RL(src_dataset)
 
     eval_cnt = 0
-    
-    eval_src_return = eval_policy(policy, src_eval_env, eval_cnt=eval_cnt)
+
     eval_cnt += 1
 
     # offline training
@@ -215,15 +215,15 @@ if __name__ == "__main__":
 
         if (t + 1) % config['eval_freq'] == 0:
             
-            if args.env in ["halfcheetah", "hopper", "walker2d", "ant"]:
-                src_eval_return = eval_policy(policy, src_eval_env, eval_cnt=eval_cnt)
-                src_eval_return = src_eval_env.get_normalized_score(src_eval_return)
-            else:
-                src_eval_return = eval_policy(policy, src_eval_env, eval_cnt=eval_cnt)
-            print(f"Step: {t}  Return: {src_eval_return}")
+            # if args.env in ["halfcheetah", "hopper", "walker2d", "ant"]:
+            #     src_eval_return = eval_policy(policy, src_eval_env, eval_cnt=eval_cnt)
+            #     src_eval_return = src_eval_env.get_normalized_score(src_eval_return)
+            # else:
+            #     src_eval_return = eval_policy(policy, src_eval_env, eval_cnt=eval_cnt)
+            # print(f"Step: {t}  Return: {src_eval_return}")
             
-            with open(outdir + '/return.txt', 'a') as f:
-                f.write(f"{t}  {src_eval_return} \n")
+            # with open(outdir + '/return.txt', 'a') as f:
+            #     f.write(f"{t}  {src_eval_return} \n")
             eval_cnt += 1
             if args.save_model:
                 policy.save('{}/models/model'.format(outdir))
